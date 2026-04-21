@@ -1,0 +1,26 @@
+# ============================================================
+# 未来工厂诊断评估系统 - Python 依赖清单
+# ============================================================
+# 安装命令：pip install -r requirements.txt
+#
+# 依赖说明：
+#   fastapi             - Web 框架（提供 REST API）
+#   uvicorn             - ASGI 服务器（运行 FastAPI 应用）
+#   sqlalchemy          - ORM 数据库操作（SQLite）
+#   python-multipart    - 文件上传支持（FormData 解析）
+#   openpyxl            - XLSX 文件读取（题库导入）
+#   python-docx         - Word 文档生成（报告输出）
+#   pydantic            - 数据验证模型（API 请求/响应格式）
+#   pydantic-settings   - 配置管理（环境变量读取）
+#   aiosqlite           - 异步 SQLite 支持（可选）
+# ============================================================
+
+fastapi
+uvicorn
+sqlalchemy
+python-multipart
+openpyxl
+python-docx
+pydantic
+pydantic-settings
+aiosqlite

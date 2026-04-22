@@ -11,7 +11,7 @@ import axios from 'axios'
 
 // 创建 Axios 实例
 const client = axios.create({
-  baseURL: '/api',                      // 所有请求自动加 /api 前缀
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
 })
 

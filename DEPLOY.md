@@ -57,22 +57,16 @@ npm run build
 
 > 构建产物在 `frontend/dist/` 目录，前端访问地址为 `http://121.41.168.197:8080`
 
-### 4. 导入题库数据（首次部署必做）
+### 4. 导入题库数据（已内置，无需操作）
 
-在 **本地电脑** 执行（上传题库文件）：
+题库 XLSX 文件已内置在 `backend/` 目录下，后端启动时会自动检测空库并导入。
 
-```bash
-# 找到题库文件路径后执行
-scp "/path/to/未来工厂标准诊断评估题库.xlsx" root@121.41.168.197:~/future-factory-system/backend/
-```
-
-在 **服务器** 执行导入：
-
-```bash
-cd ~/future-factory-system/backend
-source venv/bin/activate
-XLSX_PATH=./未来工厂标准诊断评估题库.xlsx python seed/init_db.py
-```
+> 如需手动重新导入：
+> ```bash
+> cd ~/future-factory-system/backend
+> source venv/bin/activate
+> python seed/init_db.py
+> ```
 
 ### 5. 启动服务
 

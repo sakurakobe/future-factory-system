@@ -22,9 +22,10 @@ API 文档：
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from database import engine, Base
+from database import engine, Base, SessionLocal
+from sqlalchemy import inspect
 import os
-from config import UPLOAD_DIR
+from config import UPLOAD_DIR, XLSX_PATH
 
 # ========================================
 # 导入各业务模块的路由
@@ -82,12 +83,32 @@ app.include_router(question_router, prefix="/api", tags=["题目管理"])
 
 # ========================================
 # 应用启动时的初始化事件
-# 确保所有数据库表都已创建
+# 确保所有数据库表都已创建，且题库数据已导入
 # ========================================
 @app.on_event("startup")
 async def startup():
-    """应用启动时自动执行：创建所有数据库表"""
+    """应用启动时自动执行：
+    1. 创建所有数据库表
+    2. 如果题库为空，自动从 XLSX 导入
+    """
     Base.metadata.create_all(bind=engine)
+
+    # 检查是否已有题目数据
+    db = SessionLocal()
+    try:
+        from models.question import Question
+        count = db.query(Question).count()
+        if count == 0 and os.path.exists(XLSX_PATH):
+            print("检测到题库为空，正在从 XLSX 导入数据...")
+            from services.xlsx_importer import import_xlsx
+            import_xlsx(db)
+            print(f"题库导入完成！共 {db.query(Question).count()} 道题目。")
+        else:
+            print(f"题库已存在 {count} 道题目。")
+    except Exception as e:
+        print(f"题库初始化跳过: {e}")
+    finally:
+        db.close()
 
 
 # ========================================

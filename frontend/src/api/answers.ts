@@ -21,8 +21,8 @@ export const listAnswers = (projectId: number) =>
  * @param data - 要更新的字段（等级、内容等）
  */
 export const updateAnswer = (projectId: number, questionId: number, data: {
-  selected_level?: string
-  target_level?: string
+  selected_level?: string | null
+  target_level?: string | null
   communication_content?: string
   company_status?: string
 }) =>

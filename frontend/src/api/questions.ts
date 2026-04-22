@@ -39,6 +39,7 @@ export interface UpdateQuestionPayload {
   title?: string
   max_score?: number
   industry_type?: string
+  responsible_dept?: string
   options?: LevelOption[]
 }
 
@@ -61,3 +62,7 @@ export const updateQuestion = (id: number, data: UpdateQuestionPayload) =>
 /** 删除题目 */
 export const deleteQuestion = (id: number) =>
   client.delete(`/questions/${id}`)
+
+/** 获取所有已填写的责任部门列表 */
+export const listDepartments = () =>
+  client.get<{ departments: string[] }>('/departments')

@@ -26,6 +26,7 @@ export interface Question {
   title: string
   max_score: number
   industry_type: string
+  responsible_dept: string
   is_multi_select: number
   options: LevelOption[]
 }

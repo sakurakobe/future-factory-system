@@ -2,16 +2,11 @@
  * ============================================================================
  * 子类区域组件 (SubSection)
  * ============================================================================
- * 功能：
- *   渲染一个子类（如"技术支撑"）的区域。
- *   包含子类描述和所有细项（SubSubSection）。
- *
- * 层级：方面(MajorSection) → 子类(SubSection) → 细项(SubSubSection) → 题目(QuestionCard)
+ * 功能：渲染一个子类（如"技术支撑"）的区域，包含描述和所有细项。
  * ============================================================================
  */
 import { useAssessmentStore } from '../../store/assessmentStore'
 import SubSubSection from './SubSubSection'
-import CollapsePanel from '../common/CollapsePanel'
 
 interface Props {
   subCategory: {
@@ -21,48 +16,67 @@ interface Props {
     description: string
     sub_sub_categories: any[]
   }
-  /** 管理模式下显示题目增删改按钮 */
   showManage?: boolean
-  /** 题目变化时回调（增删改后刷新） */
   onQuestionChange?: () => void
+  visibleIds?: Set<number> | null | undefined
 }
 
-export default function SubSection({ subCategory, showManage, onQuestionChange }: Props) {
-  const answers = useAssessmentStore.getState().answers
+export default function SubSection({ subCategory, showManage, onQuestionChange, visibleIds }: Props) {
+  const answers = useAssessmentStore(s => s.answers)
 
   // 计算子类总得分
   let score = 0
+  let totalMax = 0
   subCategory.sub_sub_categories.forEach(ss => {
     ss.questions.forEach((q: any) => {
       score += answers[q.id]?.score ?? 0
+      totalMax += q.max_score
     })
   })
 
+  const pct = totalMax > 0 ? Math.round(score / totalMax * 100) : 0
+
+  // 检查是否有任何可见题目
+  const hasVisibleQuestion = (ids: Set<number> | null | undefined) => {
+    if (!ids || ids.size === 0) return true
+    for (const ss of subCategory.sub_sub_categories) {
+      for (const q of ss.questions) {
+        if (ids.has(q.id)) return true
+      }
+    }
+    return false
+  }
+
+  if (!hasVisibleQuestion(visibleIds)) return null
+
   return (
-    <div className="ml-6">
-      <CollapsePanel
-        title={subCategory.name}
-        badge={`${score.toFixed(2)} / ${subCategory.max_score}`}
-        badgeColor="bg-purple-100 text-purple-800"
-      >
-        <div className="p-4">
-          {/* 子类描述说明 */}
-          {subCategory.description && (
-            <p className="text-sm text-gray-600 mb-4 bg-blue-50 p-3 rounded">{subCategory.description}</p>
-          )}
-          {/* 渲染所有细项（透传管理标志和回调） */}
-          <div className="space-y-3">
-            {subCategory.sub_sub_categories.map(ss => (
-              <SubSubSection
-                key={ss.id}
-                subSubCategory={ss}
-                showManage={showManage}
-                onQuestionChange={onQuestionChange}
-              />
-            ))}
-          </div>
-        </div>
-      </CollapsePanel>
+    <div>
+      {/* 子类标题行 */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="h-5 w-1 rounded-full bg-indigo-400" />
+        <h3 className="text-sm font-bold text-gray-800">{subCategory.name}</h3>
+        <span className="text-xs text-gray-400 ml-auto">
+          {score.toFixed(1)} / {totalMax} · {pct}%
+        </span>
+      </div>
+
+      {/* 子类描述 */}
+      {subCategory.description && (
+        <p className="text-xs text-gray-400 mb-3 pl-3">{subCategory.description}</p>
+      )}
+
+      {/* 细项列表 */}
+      <div className="space-y-3">
+        {subCategory.sub_sub_categories.map(ss => (
+          <SubSubSection
+            key={ss.id}
+            subSubCategory={ss}
+            showManage={showManage}
+            onQuestionChange={onQuestionChange}
+            visibleIds={visibleIds}
+          />
+        ))}
+      </div>
     </div>
   )
 }

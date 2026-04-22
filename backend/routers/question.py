@@ -32,6 +32,17 @@ from pydantic import BaseModel
 router = APIRouter()
 
 
+@router.get("/departments")
+def list_departments(db: Session = Depends(get_db)):
+    """获取所有已填写的责任部门列表（去重）"""
+    questions = db.query(Question).filter(
+        Question.responsible_dept != "",
+        Question.responsible_dept.isnot(None),
+    ).all()
+    depts = sorted(set(q.responsible_dept for q in questions if q.responsible_dept))
+    return {"departments": depts}
+
+
 # ---- 请求/响应模型 ----
 
 class LevelOptionSchema(BaseModel):
@@ -49,6 +60,7 @@ class QuestionCreate(BaseModel):
     title: str
     max_score: float = 0.0
     industry_type: str = "通用"
+    responsible_dept: str = ""
     options: List[LevelOptionSchema] = []
 
 
@@ -58,6 +70,7 @@ class QuestionUpdate(BaseModel):
     title: Optional[str] = None
     max_score: Optional[float] = None
     industry_type: Optional[str] = None
+    responsible_dept: Optional[str] = None
     options: Optional[List[LevelOptionSchema]] = None
 
 
@@ -82,6 +95,7 @@ def list_questions(sub_sub_category_id: int, db: Session = Depends(get_db)):
         "title": q.title,
         "max_score": q.max_score,
         "industry_type": q.industry_type,
+        "responsible_dept": q.responsible_dept,
         "is_multi_select": q.is_multi_select,
         "options": json.loads(q.options_json) if q.options_json else [],
     } for q in questions]
@@ -103,6 +117,7 @@ def get_question(question_id: int, db: Session = Depends(get_db)):
         "title": question.title,
         "max_score": question.max_score,
         "industry_type": question.industry_type,
+        "responsible_dept": question.responsible_dept,
         "is_multi_select": question.is_multi_select,
         "options": json.loads(question.options_json) if question.options_json else [],
     }
@@ -135,6 +150,7 @@ def create_question(data: QuestionCreate, db: Session = Depends(get_db)):
         title=data.title,
         max_score=data.max_score,
         industry_type=data.industry_type,
+        responsible_dept=data.responsible_dept,
         options_json=options_json,
     )
     db.add(question)

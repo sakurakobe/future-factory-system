@@ -34,8 +34,9 @@ class Question(Base):
     sort_order = Column(Integer, nullable=False)      # 在细项内的排序
     title = Column(String(500), nullable=False)       # 题目文字
     max_score = Column(Float, nullable=False)         # 最高等级对应的分值
-    industry_type = Column(String(20), default="通用") # 行业类型（预留）
+    industry_type = Column(String(20), default="通用") # 行业类型（通用/离散/流程）
     is_multi_select = Column(Integer, default=0)      # 是否多选（预留）
+    responsible_dept = Column(String(100), default="") # 责任部门（用于按部门筛选题目）
     level_labels = Column(Text)                       # 等级标签映射（JSON）
     options_json = Column(Text, nullable=False)       # 等级选项（A-F，JSON格式）
 

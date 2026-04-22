@@ -18,6 +18,7 @@
  * ============================================================================
  */
 import { useState, useEffect } from 'react'
+import { listDepartments } from '../../api/questions'
 
 interface Props {
   open: boolean
@@ -28,6 +29,7 @@ interface Props {
     title: string
     max_score: number
     industry_type: string
+    responsible_dept: string
     options: { level: string; score: number; description: string; target_level: string }[]
   }) => Promise<void>
   mode: 'create' | 'edit'
@@ -39,6 +41,7 @@ interface Props {
     title: string
     max_score: number
     industry_type: string
+    responsible_dept: string
     options: { level: string; score: number; description: string; target_level: string }[]
   }
 }
@@ -50,8 +53,15 @@ export default function QuestionModal({ open, onClose, onSave, mode, subSubCateg
   const [sortOrder, setSortOrder] = useState(0)
   const [maxScore, setMaxScore] = useState(0)
   const [industryType, setIndustryType] = useState('通用')
+  const [responsibleDept, setResponsibleDept] = useState('')
+  const [departments, setDepartments] = useState<string[]>([])
   const [options, setOptions] = useState<{ level: string; score: number; description: string; target_level: string }[]>([])
   const [saving, setSaving] = useState(false)
+
+  // 加载已有部门列表
+  useEffect(() => {
+    listDepartments().then(r => setDepartments(r.data.departments))
+  }, [])
 
   // 当弹窗打开或初始数据变化时，填充表单
   useEffect(() => {
@@ -61,6 +71,7 @@ export default function QuestionModal({ open, onClose, onSave, mode, subSubCateg
         setSortOrder(initialData.sort_order)
         setMaxScore(initialData.max_score)
         setIndustryType(initialData.industry_type || '通用')
+        setResponsibleDept(initialData.responsible_dept || '')
         setOptions(initialData.options.length > 0 ? initialData.options : LEVELS.map(l => ({
           level: l, score: 0, description: '', target_level: '',
         })))
@@ -69,6 +80,7 @@ export default function QuestionModal({ open, onClose, onSave, mode, subSubCateg
         setSortOrder(0)
         setMaxScore(0)
         setIndustryType('通用')
+        setResponsibleDept('')
         setOptions(LEVELS.map(l => ({ level: l, score: 0, description: '', target_level: '' })))
       }
     }
@@ -95,6 +107,7 @@ export default function QuestionModal({ open, onClose, onSave, mode, subSubCateg
         title: title.trim(),
         max_score: maxScore,
         industry_type: industryType,
+        responsible_dept: responsibleDept,
         options,
       })
       onClose()
@@ -167,6 +180,26 @@ export default function QuestionModal({ open, onClose, onSave, mode, subSubCateg
                   <option value="流程">流程</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">责任部门</label>
+              <select
+                value={responsibleDept}
+                onChange={e => setResponsibleDept(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">（未分配）</option>
+                {departments.map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <input
+                value={responsibleDept}
+                onChange={e => setResponsibleDept(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mt-1.5"
+                placeholder="或手动输入部门名称..."
+              />
             </div>
           </div>
 

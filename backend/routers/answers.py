@@ -35,15 +35,28 @@ from typing import List
 router = APIRouter()
 
 
+import json
+import re
+
+
 def _should_show_question(question, company_type: str) -> bool:
     """判断题目是否应该显示（与 categories API 保持一致）"""
     if company_type == "通用":
         return True
+
     title = question.title
+
     if company_type == "离散":
         return "流程行业：" not in title
+
     if company_type == "流程":
-        return "离散行业：" not in title
+        # 排除离散-流程成对题目中的离散版本（x.1/x.2 格式），
+        # 保留离散独享题（如27/28/29/72/73/79/80/95）
+        if "离散行业" in title:
+            if re.search(r'(\d+)[.](1|2)[.]', title):
+                return False
+        return True
+
     return True
 
 

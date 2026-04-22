@@ -44,10 +44,12 @@ interface AssessmentState {
   loadCategories: (companyType?: string) => Promise<void>
   /** 加载指定项目的所有回答 */
   loadAnswers: (projectId: number) => Promise<void>
+  /** 清空回答数据（切换项目时使用） */
+  clearAnswers: () => void
   /** 更新单题回答（乐观更新 + API调用） */
   setAnswer: (projectId: number, questionId: number, data: {
-    selected_level?: string
-    target_level?: string
+    selected_level?: string | null
+    target_level?: string | null
     communication_content?: string
     company_status?: string
   }) => void
@@ -66,6 +68,8 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
   answers: {},
   loading: false,
   error: null,
+
+  clearAnswers: () => set({ answers: {} }),
 
   /**
    * 加载分类树数据
@@ -93,6 +97,10 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
       const answersMap: Record<number, Answer> = {}
       // 将回答列表转为 question_id → answer 的字典，方便快速查找
       res.data.forEach((a: any) => {
+        // 如果 selected_level 为空，强制 score 为 0（防止数据库有脏数据）
+        if (!a.selected_level && a.score) {
+          a.score = 0
+        }
         answersMap[a.question_id] = a
       })
       set({ answers: answersMap, loading: false })
@@ -107,6 +115,8 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
    * 流程：
    *   1. 乐观更新：先更新本地状态，UI立即响应
    *   2. 重新计算得分：从题目选项中找到对应等级的分值
+   *      - 单选题：单个等级的分值
+   *      - 多选题：所有选中等级（逗号分隔）的分值之和
    *   3. 后台调用API：将修改保存到数据库
    *
    * @param projectId - 项目ID
@@ -123,12 +133,15 @@ export const useAssessmentStore = create<AssessmentState>((set, get) => ({
     }
     // 步骤2：合并新数据
     const updated = { ...current, ...data }
+
     // 步骤3：如果修改了沟通等级，重新计算得分
     if (data.selected_level) {
       const q = get().answers[questionId]?.question
       if (q?.options) {
-        const opt = q.options.find(o => o.level === data.selected_level)
-        updated.score = opt?.score ?? null
+        const optMap = new Map(q.options.map((o: any) => [o.level, o.score]))
+        // 支持多选题：逗号分隔多个等级，求和
+        const levels = data.selected_level.split(',').map((s: string) => s.trim()).filter(Boolean)
+        updated.score = levels.reduce((sum: number, lvl: string) => sum + (optMap.get(lvl) ?? 0), 0)
       }
     }
     // 步骤4：更新本地状态（乐观更新，UI立即响应）

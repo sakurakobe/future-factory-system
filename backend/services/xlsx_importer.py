@@ -173,11 +173,27 @@ def import_xlsx(db: Session):
     for q_data in pending_questions:
         # max_score = 该题目最高等级对应的分值
         max_score = max((o["score"] for o in q_data["options"]), default=0)
+
+        # 从题目标目中识别行业类型
+        title = q_data["title"]
+        if "离散行业" in title and "离散行业：" not in title:
+            # 兼容：标题中含"离散行业"但不含冒号（全角/半角都可能）
+            industry_type = "离散"
+        elif "流程行业" in title and "流程行业：" not in title:
+            industry_type = "流程"
+        elif "离散行业：" in title or "离散行业" == title.split("：")[0].split(":")[0]:
+            industry_type = "离散"
+        elif "流程行业：" in title or "流程行业" == title.split("：")[0].split(":")[0]:
+            industry_type = "流程"
+        else:
+            industry_type = "通用"
+
         q = Question(
             sub_sub_category_id=q_data["sub_sub_category_id"],
             sort_order=q_data["sort_order"],
             title=q_data["title"],
             max_score=max_score,
+            industry_type=industry_type,
             level_labels=json.dumps(level_labels, ensure_ascii=False),
             options_json=json.dumps(q_data["options"], ensure_ascii=False),
         )

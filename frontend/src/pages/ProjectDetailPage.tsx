@@ -25,7 +25,7 @@
  *   └───────────┴─────────────────────────────────────────────────┘
  * ============================================================================
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAssessmentStore } from '../store/assessmentStore'
 import { getProject } from '../api/projects'
@@ -33,6 +33,8 @@ import type { Project } from '../types/project'
 import MajorSection from '../components/interview/MajorSection'
 import ScoreSummary from '../components/interview/ScoreSummary'
 import SidebarNav from '../components/interview/SidebarNav'
+import FilterBar from '../components/interview/FilterBar'
+import StickyScoreBar from '../components/interview/StickyScoreBar'
 import { generateReport, downloadReport, downloadExcel } from '../api/reports'
 
 // Tab 定义
@@ -50,14 +52,18 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [generating, setGenerating] = useState(false)
   const [manageMode, setManageMode] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [visibleIds, setVisibleIds] = useState<Set<number> | null>(null)
   const navigate = useNavigate()
 
   // 从全局 Store 获取状态和操作
-  const { categories, answers, loading, error, loadCategories, loadAnswers } = useAssessmentStore()
+  const { categories, answers, loading, error, loadCategories, loadAnswers, clearAnswers } = useAssessmentStore()
 
   // 页面加载时获取分类树、回答数据和项目信息
   useEffect(() => {
     const projectId = parseInt(id!)
+    // 先清空旧数据，避免切换项目时残留
+    clearAnswers()
     // 先获取项目信息，然后用 company_type 加载分类树（过滤离散/流程题目）
     getProject(projectId).then(r => {
       const proj = r.data
@@ -93,69 +99,94 @@ export default function ProjectDetailPage() {
     downloadExcel(parseInt(id!))
   }
 
-  // 获取总分用于显示
-  const total = useAssessmentStore.getState().getTotalScore()
+  /** 筛选回调 */
+  const handleFilter = useCallback((ids: Set<number>) => {
+    setVisibleIds(ids)
+  }, [])
 
   // 加载中状态
   if (loading) return <div className="text-center py-20">加载中...</div>
   if (error) return <div className="text-center py-20 text-red-500">{error}</div>
 
   return (
-    <div>
-      {/* 返回按钮 + 项目信息栏 */}
+    <div className="min-h-screen bg-gray-50">
+      {/* 顶部项目信息栏 */}
       {project && (
-        <div className="bg-white rounded-lg shadow p-4 mb-4">
-          <div className="flex items-center gap-3 mb-3">
-            {/* 返回/退出按钮 */}
-            <button
-              onClick={() => navigate('/')}
-              className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 transition px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
-            >
-              ← 返回项目列表
-            </button>
-          </div>
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-xl font-bold">{project.company_name}</h2>
-              <p className="text-gray-500 text-sm">
-                {project.company_type} | {project.assessment_start_date} ~ {project.assessment_end_date} | 评估人: {project.assessors}
-              </p>
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate('/')}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition px-3 py-1.5 rounded-lg hover:bg-gray-100"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                返回
+              </button>
+              <div className="h-6 w-px bg-gray-200" />
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">{project.company_name}</h1>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {project.company_type} · {project.assessment_start_date} ~ {project.assessment_end_date} · 评估人: {project.assessors}
+                </p>
+              </div>
             </div>
-            {/* 总分汇总（右侧） */}
             <ScoreSummary />
           </div>
         </div>
       )}
 
       {/* Tab 导航栏 */}
-      <div className="flex gap-1 mb-4 bg-white rounded-lg shadow overflow-hidden">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setSearchParams({ tab: t.key })}
-            className={`px-6 py-3 text-sm font-medium transition ${
-              tab === t.key
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="bg-white border-b border-gray-200 px-6">
+        <div className="flex gap-1">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setSearchParams({ tab: t.key })}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition ${
+                tab === t.key
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* 内容区域 */}
+      <div className="p-6">
 
       {/* Tab 内容区域 */}
 
       {/* 1. 访谈录入（默认Tab）- 左侧导航 + 右侧题目 */}
       {tab === 'interview' && (
-        <div className="flex gap-6">
-          {/* 左侧导航栏（仅访谈录入Tab显示） */}
-          <SidebarNav categories={categories} />
+        <div className="flex">
+          {/* 左侧导航栏 */}
+          <SidebarNav
+            categories={categories}
+            collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
 
           {/* 右侧题目区域 */}
-          <div className="flex-1 space-y-4">
-            {/* 题目管理开关 */}
-            <div className="flex justify-end mb-2">
+          <div className="flex-1 space-y-4 pb-16">
+            {/* 顶部工具栏 */}
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition"
+                  title={sidebarCollapsed ? '展开导航' : '收起导航'}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+                <FilterBar categories={categories} onFilter={handleFilter} />
+              </div>
               <button
                 onClick={() => setManageMode(!manageMode)}
                 className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg transition ${
@@ -164,9 +195,7 @@ export default function ProjectDetailPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                {manageMode ? '（退出管理' : ''}
-                {manageMode ? '退出管理模式' : '管理模式：可增删改题目'}
-                {manageMode ? '）' : ''}
+                {manageMode ? '退出管理模式' : '管理模式'}
               </button>
             </div>
 
@@ -176,11 +205,15 @@ export default function ProjectDetailPage() {
                 major={major}
                 showManage={manageMode}
                 onQuestionChange={handleQuestionChange}
+                visibleIds={visibleIds}
               />
             ))}
           </div>
         </div>
       )}
+
+      {/* 悬浮分数栏 */}
+      {tab === 'interview' && <StickyScoreBar visibleIds={visibleIds} />}
 
       {/* 2. 补充信息 */}
       {tab === 'supplementary' && (
@@ -228,6 +261,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

@@ -26,21 +26,19 @@ from models.question import Question
 from models.answer import AssessmentAnswer
 
 
-def calculate_score(selected_level: Optional[str], question_id: int, db: Session) -> float:
+def calculate_score(selected_level, question_id: int, db: Session) -> float:
     """
     根据选中等级自动计算得分。
 
     参数：
-        selected_level: 用户选择的等级，如 "A", "B", "C", "D", "E", "F"
+        selected_level: 用户选择的等级，如 "A"（单选）或 "A,B,C"（多选）
         question_id: 题目ID
         db: 数据库会话
 
     返回：
-        该等级对应的分值（浮点数），如果没有选择等级则返回 0.0
+        对应等级分值之和（浮点数），如果没有选择等级则返回 0.0
 
-    示例：
-        >>> calculate_score("C", 1, db)
-        2.0
+    多选题：多个等级用逗号分隔，如 "A,B,C"，返回各选项分值之和
     """
     # 没有选择等级，返回0分
     if not selected_level:
@@ -53,14 +51,12 @@ def calculate_score(selected_level: Optional[str], question_id: int, db: Session
 
     # 从 JSON 字符串中解析等级选项列表
     options = json.loads(question.options_json)
+    level_score_map = {opt["level"]: opt["score"] for opt in options}
 
-    # 查找匹配的等级选项，返回对应分值
-    for opt in options:
-        if opt["level"] == selected_level:
-            return opt["score"]
-
-    # 找不到匹配等级时返回0
-    return 0.0
+    # 支持多选：逗号分隔多个等级（如 "A,B,C"）
+    levels = [s.strip() for s in str(selected_level).split(",") if s.strip()]
+    total = sum(level_score_map.get(level, 0) for level in levels)
+    return total
 
 
 def update_answer_score(answer: AssessmentAnswer, db: Session) -> float:

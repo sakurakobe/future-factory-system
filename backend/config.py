@@ -36,4 +36,4 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 # 默认从环境变量 XLSX_PATH 读取，如果未设置则使用默认路径
 # 确保此文件存在，否则数据库初始化时会报错
 # ========================================
-XLSX_PATH = os.environ.get("XLSX_PATH", "D:/code/文件内容/未来工厂标准诊断评估题库.xlsx")
+XLSX_PATH = os.environ.get("XLSX_PATH", os.path.join(BASE_DIR, "../未来工厂标准诊断评估题库.xlsx"))

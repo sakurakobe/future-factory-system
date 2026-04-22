@@ -68,25 +68,24 @@ npm run build
 > python seed/init_db.py
 > ```
 
-### 5. 启动服务
+### 5. 安装 systemd 服务（崩溃自动重启 + 开机自启）
 
 ```bash
-# 启动后端 (端口 8000)
-cd ~/future-factory-system/backend
-source venv/bin/activate
-nohup uvicorn main:app --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
-
-# 启动前端 (端口 8080)
-cd ~/future-factory-system/frontend
-npx serve dist -l 8080 > ../frontend.log 2>&1 &
-
-# 查看日志确认启动成功
-tail -f ~/future-factory-system/backend.log ~/future-factory-system/frontend.log
+cd ~/future-factory-system
+sudo bash deploy/setup.sh
 ```
+
+这会自动：
+- 安装 `factory-backend.service` 和 `factory-frontend.service`
+- 崩溃后 **5 秒内自动重启**
+- 服务器重启后 **自动启动**
 
 ### 6. 验证部署
 
 ```bash
+# 查看服务状态
+systemctl status factory-backend factory-frontend
+
 # 后端健康检查
 curl http://121.41.168.197:8000/api/health
 # 预期返回: {"status": "ok"}
@@ -112,66 +111,31 @@ git pull
 # 重新构建前端
 cd frontend && npm install && npm run build
 
-# 重启后端
+# 重启后端（依赖会自动安装）
 cd ../backend
 source venv/bin/activate
 pip install -r requirements.txt
-pkill -f "uvicorn main:app"
-nohup uvicorn main:app --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
+sudo systemctl restart factory-backend
 
 # 重启前端
-cd ../frontend
-pkill -f "serve dist"
-npx serve dist -l 8080 > ../frontend.log 2>&1 &
+sudo systemctl restart factory-frontend
 ```
 
----
-
-## 四、生产环境管理（推荐）
-
-### 使用 Supervisor 管理进程
+### 常用命令
 
 ```bash
-# 安装 supervisor
-sudo apt install supervisor -y   # Ubuntu/Debian
-# 或
-sudo yum install supervisor -y   # CentOS
+# 查看状态
+systemctl status factory-backend factory-frontend
 
-# 创建后端配置
-sudo cat > /etc/supervisor/conf.d/factory-backend.conf << 'EOF'
-[program:factory-backend]
-command=/root/future-factory-system/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
-directory=/root/future-factory-system/backend
-user=root
-autostart=true
-autorestart=true
-redirect_stderr=true
-stdout_logfile=/var/log/factory-backend.log
-environment=PYTHONUNBUFFERED="1"
-EOF
+# 查看日志
+journalctl -u factory-backend -f
+journalctl -u factory-frontend -f
 
-# 创建前端配置
-sudo cat > /etc/supervisor/conf.d/factory-frontend.conf << 'EOF'
-[program:factory-frontend]
-command=npx serve dist -l 8080
-directory=/root/future-factory-system/frontend
-user=root
-autostart=true
-autorestart=true
-redirect_stderr=true
-stdout_logfile=/var/log/factory-frontend.log
-EOF
+# 重启服务
+sudo systemctl restart factory-backend factory-frontend
 
-# 重新加载并启动
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl start factory-backend factory-frontend
-```
-
-### 查看状态
-
-```bash
-sudo supervisorctl status
+# 停止服务
+sudo systemctl stop factory-backend factory-frontend
 ```
 
 ---

@@ -1,0 +1,16 @@
+[Unit]
+Description=未来工厂诊断评估系统 - 前端
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/future-factory-system/frontend
+ExecStart=/usr/bin/npx serve dist -l 8080
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/factory-frontend.log
+StandardError=append:/var/log/factory-frontend.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=未来工厂诊断评估系统 - 后端 API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/future-factory-system/backend
+ExecStart=/root/future-factory-system/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/factory-backend.log
+StandardError=append:/var/log/factory-backend.log
+
+[Install]
+WantedBy=multi-user.target

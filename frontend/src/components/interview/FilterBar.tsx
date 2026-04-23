@@ -36,6 +36,8 @@ export default function FilterBar({ categories, onFilter }: Props) {
   const [expandedMajor, setExpandedMajor] = useState<number | null>(null)
   const [expandedSubSub, setExpandedSubSub] = useState<number | null>(null)
   const searchRef = useRef<HTMLDivElement>(null)
+  const majorRef = useRef<HTMLDivElement>(null)
+  const subsubRef = useRef<HTMLDivElement>(null)
 
   // 加载责任部门列表
   useEffect(() => {
@@ -49,8 +51,12 @@ export default function FilterBar({ categories, onFilter }: Props) {
       if (searchRef.current && !searchRef.current.contains(target)) {
         setShowSearch(false)
       }
-      if (expandedMajor !== null) setExpandedMajor(null)
-      if (expandedSubSub !== null) setExpandedSubSub(null)
+      if (expandedMajor !== null && majorRef.current && !majorRef.current.contains(target)) {
+        setExpandedMajor(null)
+      }
+      if (expandedSubSub !== null && subsubRef.current && !subsubRef.current.contains(target)) {
+        setExpandedSubSub(null)
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -317,6 +323,7 @@ export default function FilterBar({ categories, onFilter }: Props) {
         <div className="relative">
           <button
             onClick={() => { setExpandedMajor(expandedMajor === 1 ? null : 1); if (expandedSubSub !== null) setExpandedSubSub(null) }}
+            onMouseDown={e => e.stopPropagation()}
             className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-600 outline-none focus:ring-1 focus:ring-blue-300 hover:bg-gray-50 transition"
           >
             能力域 {selectedMajors.size > 0 && <span className="text-blue-500">({selectedMajors.size})</span>}
@@ -325,7 +332,7 @@ export default function FilterBar({ categories, onFilter }: Props) {
             </svg>
           </button>
           {expandedMajor === 1 && (
-            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-2 px-2 min-w-[160px]">
+            <div ref={majorRef} className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-2 px-2 min-w-[160px]">
               {categories.map(m => {
                 const isSelected = selectedMajors.has(m.id)
                 return (
@@ -348,6 +355,7 @@ export default function FilterBar({ categories, onFilter }: Props) {
         <div className="relative">
           <button
             onClick={() => { setExpandedSubSub(expandedSubSub === 1 ? null : 1); if (expandedMajor !== null) setExpandedMajor(null) }}
+            onMouseDown={e => e.stopPropagation()}
             className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-600 outline-none focus:ring-1 focus:ring-blue-300 hover:bg-gray-50 transition"
           >
             细项 {selectedSubSubs.size > 0 && <span className="text-blue-500">({selectedSubSubs.size})</span>}
@@ -356,7 +364,7 @@ export default function FilterBar({ categories, onFilter }: Props) {
             </svg>
           </button>
           {expandedSubSub === 1 && (
-            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-2 px-2 min-w-[200px] max-h-64 overflow-y-auto">
+            <div ref={subsubRef} className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-2 px-2 min-w-[200px] max-h-64 overflow-y-auto">
               {allSubSubs.filter(s => !selectedMajors.size || selectedMajors.has(s.majorId)).map(s => {
                 const isSelected = selectedSubSubs.has(s.id)
                 return (

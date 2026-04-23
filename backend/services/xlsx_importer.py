@@ -171,8 +171,9 @@ def import_xlsx(db: Session):
 
     # 第三步：将题目写入数据库
     for q_data in pending_questions:
-        # max_score = 该题目最高等级对应的分值
-        max_score = max((o["score"] for o in q_data["options"]), default=0)
+        # max_score: 多选题取所有选项分值之和（用户可选择多项），单选题取最高等级分值
+        is_multi = "（多选题）" in q_data["title"] or "多选题" in q_data["title"]
+        max_score = sum((o["score"] for o in q_data["options"])) if is_multi else max((o["score"] for o in q_data["options"]), default=0)
 
         # 从题目标目中识别行业类型
         title = q_data["title"]

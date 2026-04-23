@@ -25,3 +25,4 @@ uploads/
 *.db
 *.sqlite3
 backend/ai_config.json
+backend/auth_config.json

@@ -20,6 +20,8 @@ API 文档：
 """
 
 from fastapi import FastAPI
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from database import engine, Base, SessionLocal
@@ -60,6 +62,37 @@ app.add_middleware(
     allow_methods=["*"],        # 允许所有 HTTP 方法
     allow_headers=["*"],        # 允许所有请求头
 )
+
+# ========================================
+# 简单密码认证中间件
+# 除登录接口和健康检查外，所有 /api/* 请求需要携带有效 token
+# ========================================
+from auth_module import verify_token
+
+_UNAUTH_PATHS = {
+    "/api/health",
+    "/api/auth/login",
+}
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    # Allow health check, auth endpoints, static files, and docs through
+    if (path in _UNAUTH_PATHS
+            or path.startswith("/api/auth/")
+            or path.startswith("/uploads/")
+            or path in ("/docs", "/redoc", "/openapi.json")):
+        return await call_next(request)
+    # Check auth token for all other /api/* routes
+    if path.startswith("/api/"):
+        auth = request.headers.get("Authorization", "")
+        token = auth.replace("Bearer ", "", 1) if auth.startswith("Bearer ") else auth
+        if not token or not verify_token(token):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "未认证或 token 已过期，请重新登录"},
+            )
+    return await call_next(request)
 
 # ========================================
 # 创建上传文件存储目录
@@ -112,6 +145,33 @@ async def startup():
     finally:
         db.close()
 
+
+# ========================================
+# 登录接口
+# POST /api/auth/login — 验证密码，返回 token
+# ========================================
+from pydantic import BaseModel
+from auth_module import validate_password, create_token, change_password
+
+class LoginRequest(BaseModel):
+    password: str
+
+class ChangePasswordRequest(BaseModel):
+    old: str
+    new: str
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest):
+    if not validate_password(req.password):
+        return JSONResponse(status_code=401, content={"detail": "密码错误"})
+    token = create_token()
+    return {"token": token}
+
+@app.post("/api/auth/change-password")
+async def change_password(req: ChangePasswordRequest):
+    if not change_password(req.old, req.new):
+        return JSONResponse(status_code=401, content={"detail": "原密码错误"})
+    return {"message": "密码已修改"}
 
 # ========================================
 # 健康检查接口

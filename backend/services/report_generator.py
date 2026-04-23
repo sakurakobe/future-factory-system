@@ -45,36 +45,27 @@ from models.note import MajorCategoryNote
 from models.investment import InvestmentItem
 from models.supplementary import SupplementaryInfo
 from config import UPLOAD_DIR
+from services.report_templates import (
+    SUBCATEGORY_REQUIREMENTS,
+    INTELLIGENT_PRODUCTION_SUB_REQUIREMENTS,
+    MAJOR_CATEGORY_DESCRIPTIONS,
+    OVERVIEW_BACKGROUND,
+    REQUIREMENT_INTRO,
+)
 
-# 等级顺序，用于计算改进建议时判断等级间的过渡
 LEVEL_ORDER = ['A', 'B', 'C', 'D', 'E', 'F']
 
 
 class ReportGenerator:
-    """
-    诊断评估报告生成器。
-
-    使用 python-docx 按标准模板逐段生成 Word 文档。
-    包含标题、概述、详细分析和投资计划四大章节。
-    """
 
     def __init__(self, project, db: Session):
-        """
-        初始化报告生成器。
-
-        参数：
-            project: 评估项目 ORM 对象（包含企业名称、日期等信息）
-            db: SQLAlchemy 数据库会话，用于查询回答和题目数据
-        """
         self.project = project
         self.db = db
         self.doc = Document()
         self._setup_styles()
-        # 获取项目的 company_type，用于过滤 离散/流程 行业题目
         self.company_type = project.company_type or "通用"
 
     def _should_show_question(self, question) -> bool:
-        """判断题目是否应计入报告（与 categories API 保持一致）"""
         if self.company_type == "通用":
             return True
         title = question.title
@@ -85,24 +76,13 @@ class ReportGenerator:
         return True
 
     def _setup_styles(self):
-        """设置文档默认样式（字体、字号）"""
         style = self.doc.styles['Normal']
         font = style.font
         font.name = '宋体'
         font.size = Pt(12)
-        # 设置中文字体（确保 Word 正确渲染）
         style.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
 
     def _set_cell_font(self, cell, text, bold=False, size=10):
-        """
-        设置表格单元格的字体（支持中文字体）。
-
-        参数：
-            cell: python-docx 表格单元格对象
-            text: 单元格显示文本
-            bold: 是否加粗
-            size: 字号（默认10pt）
-        """
         cell.text = ''
         p = cell.paragraphs[0]
         run = p.add_run(text)
@@ -111,16 +91,8 @@ class ReportGenerator:
         run.font.bold = bold
         run.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
 
-    def generate(self, filepath: str):
-        """
-        生成完整诊断报告并保存到指定路径。
-
-        参数：
-            filepath: 输出文件路径（如 "uploads/报告_xxx.docx"）
-
-        返回：
-            保存的文件路径
-        """
+    def generate(self, filepath: str, use_ai: bool = False):
+        self._use_ai = use_ai
         self._add_title()
         self._add_overview()
         self._add_detailed_analysis()
@@ -128,33 +100,60 @@ class ReportGenerator:
         self.doc.save(filepath)
         return filepath
 
+    def generate_stream(self, filepath: str, use_ai: bool, callback):
+        """
+        生成报告并通过 callback 流式推送进度。
+        callback(step, pct, ai) -> None
+        """
+        self._use_ai = use_ai
+        callback("开始生成报告...", 0, False)
+        callback("正在计算得分汇总...", 3, False)
+
+        self._add_title()
+        callback("标题已生成", 5, False)
+
+        self._add_overview()
+        callback("整体情况概览完成", 10, False)
+
+        callback("正在生成详细分析...", 12, False)
+        self._add_detailed_analysis_stream(callback)
+
+        self._add_investment_plan()
+        callback("改造投入建议完成", 95, False)
+
+        self.doc.save(filepath)
+        callback("报告文档已保存...", 100, False)
+
+    # ------------------------------------------------------------------
+    # 标题
+    # ------------------------------------------------------------------
     def _add_title(self):
-        """添加报告标题（居中显示）"""
         self.doc.add_paragraph(
             f'{self.project.company_name}未来工厂建设诊断评估报告',
             style='Heading 1'
         ).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
+    # ------------------------------------------------------------------
+    # 整体情况
+    # ------------------------------------------------------------------
     def _add_overview(self):
-        """
-        添加"整体情况"章节。
-
-        包含：
-        - 评估背景说明（引用浙江省未来工厂建设标准）
-        - 现场调研说明（评估时间、人员）
-        - 总体评分（总分、满分、得分率）
-        - 得分汇总表（方面 + 子类的满分和得分）
-        """
         self.doc.add_heading('整体情况', level=1)
 
         # ---- 背景说明 ----
-        self.doc.add_paragraph(
-            '根据《"未来工厂"建设导则》、《浙江省"未来工厂"建设要求（试行）》，'
-            '围绕未来工厂认定的企业范围、未来发展战略，以人工智能和新一代信息技术应用为手段，'
-            '围绕数据要素和模型驱动，对企业的建设要求、资源要素要求、组织动态能力，'
-            '以及追踪价值创造和产业链竞争力的实际 manufacturing 模式和产业组织单元数据化水平进行分析。'
-            '2026年4月，我们受企业邀请，对浙江省内的未来工厂培育企业开展全面的诊断评估工作。'
+        company_name_short = self.project.company_name
+        if '有限公司' in company_name_short:
+            company_name_short = company_name_short.split('有限公司')[0]
+        if '公司' in company_name_short:
+            company_name_short = company_name_short.split('公司')[0]
+
+        now = datetime.now()
+        background = OVERVIEW_BACKGROUND.format(
+            company_name=self.project.company_name,
+            company_name_short=company_name_short,
+            year=now.year,
+            month=now.month,
         )
+        self.doc.add_paragraph(background)
 
         # ---- 调研说明 ----
         assessors = self.project.assessors or '评估专家组'
@@ -167,7 +166,7 @@ class ReportGenerator:
             f'诊断未来工厂建设的问题，对未来工厂建设提出专业指导建议。'
         )
 
-        # ---- 总体评分（根据 company_type 过滤题目）----
+        # ---- 总体评分 ----
         answers = self.db.query(AssessmentAnswer).filter(
             AssessmentAnswer.project_id == self.project.id
         ).all()
@@ -184,28 +183,33 @@ class ReportGenerator:
 
         percentage = (total_score / total_max * 100) if total_max > 0 else 0
 
+        # 判断整体水平阶段
+        if percentage >= 80:
+            stage = "处于未来工厂水平"
+        elif percentage >= 60:
+            stage = "处于智能工厂向未来工厂过渡阶段"
+        elif percentage >= 40:
+            stage = "处于省级智能工厂培育阶段"
+        else:
+            stage = "处于数字化车间培育阶段"
+
         self.doc.add_paragraph(
             f'综合调研情况，{self.project.company_name}初步得分为{total_score:.2f}分'
-            f'（满分{total_max}分），得分率{percentage:.2f}%。'
+            f'（满分{total_max}分），得分率{percentage:.2f}%，整体建设水平{stage}。'
         )
 
         # ---- 得分汇总表 ----
         majors = self.db.query(MajorCategory).order_by(MajorCategory.sort_order).all()
         subs = self.db.query(SubCategory).order_by(SubCategory.sort_order).all()
 
-        # 构建回答映射（question_id → answer）
-        answer_map = {}
-        for a in answers:
-            answer_map[a.question_id] = a
+        answer_map = {a.question_id: a for a in answers}
 
-        # 创建表格
-        table = self.doc.add_table(rows=1, cols=4, style='Light Grid Accent 1')
+        table = self.doc.add_table(rows=1, cols=5, style='Light Grid Accent 1')
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
-        headers = ['主要方面', '子类', '满分', '得分']
+        headers = ['能力要素', '能力域', '总分', '得分', '得分率']
         for i, h in enumerate(headers):
             self._set_cell_font(table.rows[0].cells[i], h, bold=True)
 
-        # 逐行填充：每个子类一行，方面名只在第一个子类行显示
         for major in majors:
             major_subs = [s for s in subs if s.major_category_id == major.id]
             first = True
@@ -227,42 +231,65 @@ class ReportGenerator:
                             sub_score += answer_map[q.id].score
 
                 row = table.add_row()
+                sub_pct = (sub_score / sub_max * 100) if sub_max > 0 else 0
                 if first:
                     self._set_cell_font(row.cells[0], major.name, bold=True)
                     first = False
                 self._set_cell_font(row.cells[1], sub.name)
-                self._set_cell_font(row.cells[2], f'{sub.max_score}')
+                self._set_cell_font(row.cells[2], f'{sub_max}')
                 self._set_cell_font(row.cells[3], f'{sub_score:.2f}')
+                self._set_cell_font(row.cells[4], f'{sub_pct:.2f}%')
 
         self.doc.add_paragraph('')
 
+    # ------------------------------------------------------------------
+    # 要求细项
+    # ------------------------------------------------------------------
     def _add_detailed_analysis(self):
-        """
-        添加"要求细项"章节。
-
-        按 方面 → 子类 层级展开，每个子类包含：
-        - 子类标题 + 得分概况
-        - 要求解读
-        - 企业现状与差距
-        - 详细评测表格（6列）
-        """
         self.doc.add_heading('要求细项', level=1)
+        self.doc.add_paragraph(REQUIREMENT_INTRO)
+        self._add_detailed_sections()
 
+    def _add_detailed_analysis_stream(self, callback):
+        """带进度回调的详细分析生成"""
+        self.doc.add_heading('要求细项', level=1)
+        self.doc.add_paragraph(REQUIREMENT_INTRO)
+        self._add_detailed_sections(callback=callback)
+
+    def _add_detailed_sections(self, callback=None):
+        """详细分析的核心逻辑，支持可选进度回调"""
         majors = self.db.query(MajorCategory).order_by(MajorCategory.sort_order).all()
         answers = self.db.query(AssessmentAnswer).filter(
             AssessmentAnswer.project_id == self.project.id
         ).all()
         answer_map = {a.question_id: a for a in answers}
 
+        total_majors = len(majors)
+        # Calculate total subcategories for progress tracking
+        total_subs = 0
         for major in majors:
+            subs = self.db.query(SubCategory).filter(
+                SubCategory.major_category_id == major.id
+            ).all()
+            total_subs += len(subs)
+
+        sub_idx = 0
+        pct_base = 12  # Start progress at 12%
+        pct_range = 80  # Use 80% of progress (12-92%)
+
+        for mi, major in enumerate(majors):
+            if callback:
+                callback(f"正在生成 [{major.name}] 概述...", pct_base + int(mi / total_majors * pct_range * 0.15), False)
+
             self.doc.add_heading(major.name, level=2)
 
+            # Major Category overview paragraph
             major_score = 0
             major_max = 0
             subs = self.db.query(SubCategory).filter(
                 SubCategory.major_category_id == major.id
             ).order_by(SubCategory.sort_order).all()
-
+            sub_names = []
             for sub in subs:
                 sub_score = 0
                 sub_max = 0
@@ -277,59 +304,159 @@ class ReportGenerator:
                         if not self._should_show_question(q):
                             continue
                         sub_max += q.max_score
+                        major_max += q.max_score
                         if q.id in answer_map and answer_map[q.id].score:
                             sub_score += answer_map[q.id].score
-                major_score += sub_score
-                major_max += sub_max
+                            major_score += answer_map[q.id].score
+                sub_names.append(sub.name)
 
-                # 子类标题
-                self.doc.add_heading(sub.name, level=3)
+            major_pct = (major_score / major_max * 100) if major_max > 0 else 0
+            major_desc = MAJOR_CATEGORY_DESCRIPTIONS.get(major.name, '')
+            sub_names_str = '、'.join(sub_names)
+            overview_text = (
+                f'{major.name}能力要素总分{major_max}分，企业得分{major_score:.2f}分，'
+                f'得分率{major_pct:.2f}%。{major_desc}涵盖{sub_names_str}等能力域。'
+            )
+            self.doc.add_paragraph(overview_text)
 
-                # 子类得分概况
-                pct = (sub_score / sub.max_score * 100) if sub.max_score > 0 else 0
-                self.doc.add_paragraph(
-                    f'{sub.name}（总分{sub.max_score}分，当前得分{sub_score:.2f}分，得分率{pct:.2f}%）'
-                )
+            for sub in subs:
+                sub_idx += 1
+                if callback:
+                    pct = pct_base + int(sub_idx / total_subs * pct_range)
+                    callback(f"正在分析 [{sub.name}] — 企业现状与差距...", pct, self._use_ai)
 
-                # 要求解读
-                self.doc.add_paragraph(f'要求解读：{sub.description or ""}')
-
-                # 企业现状与差距：汇总所有题目的企业现状/沟通内容
-                status_parts = []
+                sub_score = 0
+                sub_max = 0
+                target_score = 0
+                subsubs = self.db.query(SubSubCategory).filter(
+                    SubSubCategory.sub_category_id == sub.id
+                ).all()
                 for ss in subsubs:
                     questions = self.db.query(Question).filter(
                         Question.sub_sub_category_id == ss.id
-                    ).order_by(Question.sort_order).all()
+                    ).all()
                     for q in questions:
                         if not self._should_show_question(q):
                             continue
+                        sub_max += q.max_score
                         if q.id in answer_map:
                             a = answer_map[q.id]
-                            if a.company_status:
-                                status_parts.append(f'{q.title}：{a.company_status}')
-                            elif a.communication_content:
-                                status_parts.append(f'{q.title}：{a.communication_content}')
+                            if a.score:
+                                sub_score += a.score
+                            if a.target_level:
+                                options = json.loads(q.options_json)
+                                for opt in options:
+                                    if opt['level'] == a.target_level:
+                                        target_score += opt['score']
+                                        break
 
-                if status_parts:
-                    self.doc.add_paragraph(f'企业现状与差距：{"；".join(status_parts)}')
-                else:
-                    self.doc.add_paragraph('企业现状与差距：暂无记录。')
+                pct = (sub_score / sub_max * 100) if sub_max > 0 else 0
 
-                # 添加详细评测表格
-                self._add_detail_table(sub, answer_map)
+                # 子类标题
+                self.doc.add_heading(sub.name, level=3)
+                self.doc.add_paragraph(
+                    f'{sub.name}（总分{sub_max}分，当前得分{sub_score:.2f}分，'
+                    f'得分率{pct:.2f}%，目标得分{target_score:.2f}分）'
+                )
 
-    def _add_detail_table(self, sub_category, answer_map):
+                # ---- 要求解读 ----
+                requirement = self._get_requirement_interpretation(sub)
+                self.doc.add_paragraph(f'要求解读：{requirement}')
+
+                # ---- 企业现状与差距 ----
+                status_text = self._generate_status_text(sub, answer_map)
+                self.doc.add_paragraph(f'企业现状与差距分析：{status_text}')
+
+                # ---- 评测表格 ----
+                self._add_detail_table(sub, answer_map, callback)
+
+        if callback:
+            callback("详细分析生成完毕", pct_base + pct_range, False)
+
+    def _get_requirement_interpretation(self, sub_category) -> str:
+        """获取子类的要求解读文本"""
+        # 优先使用模板
+        text = SUBCATEGORY_REQUIREMENTS.get(sub_category.name, '')
+        if text:
+            return text
+        # 兜底使用数据库中的描述
+        if sub_category.description:
+            return sub_category.description
+        return '暂无要求解读。'
+
+    def _generate_status_text(self, sub_category, answer_map) -> str:
         """
-        为指定子类添加详细评测表格。
-
-        表格包含6列：
-        1. 能力域（细项名称）
-        2. 评测题目
-        3. 企业现状与差距
-        4. 对应分值（当前得分）
-        5. 对标未来工厂建议的提升点（改进建议）
-        6. 目标分值
+        结构化呈现子类下各 SubSubCategory 的企业现状。
+        按 SubSubCategory 分组，每个子域列出关键信息。
+        如果 use_ai 开启，则尝试调用 AI 生成叙述性分析。
         """
+        subsubs = self.db.query(SubSubCategory).filter(
+            SubSubCategory.sub_category_id == sub_category.id
+        ).order_by(SubSubCategory.sort_order).all()
+
+        # 收集所有题目的现状数据
+        status_data = []
+        for ss in subsubs:
+            questions = self.db.query(Question).filter(
+                Question.sub_sub_category_id == ss.id
+            ).order_by(Question.sort_order).all()
+            for q in questions:
+                if not self._should_show_question(q):
+                    continue
+                if q.id in answer_map:
+                    a = answer_map[q.id]
+                    text = a.company_status or a.communication_content
+                    status_data.append({
+                        "sub_sub_name": ss.name,
+                        "question_title": q.title,
+                        "company_status": text or "",
+                        "score": a.score or 0,
+                        "selected_level": a.selected_level or "",
+                        "target_level": a.target_level or "",
+                    })
+
+        # 尝试 AI 增强
+        if self._use_ai and status_data:
+            try:
+                from services.ai_enhancer import generate_status_analysis
+                requirement = self._get_requirement_interpretation(sub_category)
+                ai_result = generate_status_analysis(
+                    requirement, status_data, self.project.company_name
+                )
+                if ai_result:
+                    return ai_result
+            except Exception:
+                pass  # 降级到结构化文本
+
+        # 结构化呈现
+        parts = []
+        for ss in subsubs:
+            questions = self.db.query(Question).filter(
+                Question.sub_sub_category_id == ss.id
+            ).order_by(Question.sort_order).all()
+            status_items = []
+            for q in questions:
+                if not self._should_show_question(q):
+                    continue
+                if q.id in answer_map:
+                    a = answer_map[q.id]
+                    text = a.company_status or a.communication_content
+                    if text:
+                        status_items.append(f'{q.title}：{text}')
+            if status_items:
+                joined = '；'.join(status_items)
+                parts.append(f'{ss.name}方面，{joined}')
+            else:
+                parts.append(f'{ss.name}方面，暂无记录。')
+
+        if parts:
+            return '；'.join(parts) + '。'
+        return '暂无记录。'
+
+    # ------------------------------------------------------------------
+    # 评测表格
+    # ------------------------------------------------------------------
+    def _add_detail_table(self, sub_category, answer_map, callback=None):
         subsubs = self.db.query(SubSubCategory).filter(
             SubSubCategory.sub_category_id == sub_category.id
         ).order_by(SubSubCategory.sort_order).all()
@@ -341,7 +468,7 @@ class ReportGenerator:
         for i, h in enumerate(headers):
             self._set_cell_font(table.rows[0].cells[i], h, bold=True, size=9)
 
-        # 逐行填充题目
+        q_count = 0
         for ss in subsubs:
             questions = self.db.query(Question).filter(
                 Question.sub_sub_category_id == ss.id
@@ -350,23 +477,20 @@ class ReportGenerator:
             for q in questions:
                 if not self._should_show_question(q):
                     continue
+                q_count += 1
                 row = table.add_row()
                 self._set_cell_font(row.cells[0], ss.name, size=9)
                 self._set_cell_font(row.cells[1], q.title, size=9)
 
                 if q.id in answer_map:
                     a = answer_map[q.id]
-                    # 企业现状/沟通内容
                     self._set_cell_font(row.cells[2],
                                         a.company_status or a.communication_content or '', size=9)
-                    # 当前得分
                     self._set_cell_font(row.cells[3], f'{a.score or 0:.2f}', size=9)
 
-                    # 改进建议：根据当前等级和目标等级之间的等级描述生成
                     suggestion = self._generate_suggestion(q, a)
                     self._set_cell_font(row.cells[4], suggestion, size=9)
 
-                    # 目标分值
                     if a.target_level:
                         options = json.loads(q.options_json)
                         for opt in options:
@@ -384,17 +508,46 @@ class ReportGenerator:
     def _generate_suggestion(self, question, answer) -> str:
         """
         根据当前等级和目标等级生成改进建议。
-
-        逻辑：提取从当前等级到目标等级之间所有等级的描述（取前80字符），
-        作为企业需要达成的目标要点。
-
-        示例：当前C级，目标E级 → 提取D级和E级的描述作为建议
+        如果 use_ai 开启，尝试调用 AI 生成更专业的建议。
         """
         if not answer.selected_level or not answer.target_level:
             return '——'
         if answer.selected_level == answer.target_level:
             return '已达目标，持续优化。'
 
+        # 尝试 AI 增强
+        if self._use_ai:
+            try:
+                from services.ai_enhancer import generate_suggestion
+                current_idx = LEVEL_ORDER.index(answer.selected_level) if answer.selected_level in LEVEL_ORDER else 0
+                target_idx = LEVEL_ORDER.index(answer.target_level) if answer.target_level in LEVEL_ORDER else 0
+
+                options = json.loads(question.options_json)
+                level_descs = []
+                for i in range(current_idx + 1, target_idx + 1):
+                    for opt in options:
+                        if opt['level'] == LEVEL_ORDER[i]:
+                            level_descs.append({
+                                "level": opt['level'],
+                                "score": opt.get('score', 0),
+                                "description": opt.get('description', ''),
+                            })
+                            break
+
+                if level_descs:
+                    ai_result = generate_suggestion(
+                        question_title=question.title,
+                        company_status=answer.company_status or answer.communication_content or '',
+                        current_level=answer.selected_level,
+                        target_level=answer.target_level,
+                        level_descriptions=level_descs,
+                    )
+                    if ai_result:
+                        return ai_result
+            except Exception:
+                pass
+
+        # 降级：提取等级描述的完整段落
         current_idx = LEVEL_ORDER.index(answer.selected_level) if answer.selected_level in LEVEL_ORDER else 0
         target_idx = LEVEL_ORDER.index(answer.target_level) if answer.target_level in LEVEL_ORDER else 0
 
@@ -403,24 +556,22 @@ class ReportGenerator:
         for i in range(current_idx + 1, target_idx + 1):
             for opt in options:
                 if opt['level'] == LEVEL_ORDER[i] and opt.get('description'):
-                    # 提取关键描述（前80字符）
-                    desc = opt['description'][:80]
-                    suggestions.append(desc)
+                    desc = opt['description']
+                    if len(desc) > 200:
+                        desc = desc[:200]
+                    level_label = opt.get('level', '')
+                    score = opt.get('score', 0)
+                    suggestions.append(f'{level_label}级({score}分)：{desc}')
                     break
 
-        return '、'.join(suggestions) if suggestions else '——'
+        return '；'.join(suggestions) if suggestions else '——'
 
+    # ------------------------------------------------------------------
+    # 改造投入建议
+    # ------------------------------------------------------------------
     def _add_investment_plan(self):
-        """
-        添加"改造投入建议"章节。
-
-        包含：
-        1. 按类别分组的投资详情（每类标题 + 项目列表）
-        2. 投资项目汇总表
-        """
         self.doc.add_heading('改造投入建议', level=1)
 
-        # 四大投资类别
         categories = {
             'necessary': '必要投入/改造项目',
             'recommended': '建议投入项目',
@@ -428,7 +579,14 @@ class ReportGenerator:
             'confirmed': '已明确投入项目',
         }
 
-        # 逐类展示投资项目
+        # 各类别说明
+        category_intro = {
+            'necessary': '此类项目为未来工厂认定关键支撑项，直接影响核心能力域得分，需优先推进落地。',
+            'recommended': '此类项目为未来工厂建设重要支撑项，建议结合企业发展战略，分阶段逐步推进。',
+            'system_upgrade': '系统已有功能待优化升级，结合未来工厂建设要求开展功能扩展。',
+            'confirmed': '企业已明确建设计划的项目，需聚焦核心目标推进落地实施，确保与未来工厂建设要求对齐。',
+        }
+
         for cat_key, cat_title in categories.items():
             self.doc.add_heading(cat_title, level=2)
             items = self.db.query(InvestmentItem).filter(
@@ -439,6 +597,9 @@ class ReportGenerator:
             if not items:
                 self.doc.add_paragraph('暂无投资项目。')
                 continue
+
+            # 类别说明
+            self.doc.add_paragraph(category_intro.get(cat_key, ''))
 
             for i, item in enumerate(items, 1):
                 budget_str = ''

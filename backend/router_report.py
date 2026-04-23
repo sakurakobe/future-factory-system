@@ -16,14 +16,15 @@ API 端点：
 
 ================================================================================
 """
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
 from models.project import AssessmentProject
 from services.summary import get_score_summary
 from services.report_generator import ReportGenerator
 from services.excel_export import export_excel
+from pydantic import BaseModel
 import os
 
 router = APIRouter()
@@ -42,8 +43,12 @@ def get_summary(project_id: int, db: Session = Depends(get_db)):
     return get_score_summary(project_id, db)
 
 
+class GenerateReportRequest(BaseModel):
+    use_ai: bool = False
+
+
 @router.post("/projects/{project_id}/report/generate")
-def generate_report(project_id: int, db: Session = Depends(get_db)):
+def generate_report(project_id: int, req: GenerateReportRequest = Body(default=GenerateReportRequest()), db: Session = Depends(get_db)):
     """
     生成诊断评估报告（Word文档）。
 
@@ -61,9 +66,79 @@ def generate_report(project_id: int, db: Session = Depends(get_db)):
     filepath = os.path.join(REPORT_DIR, filename)
 
     generator = ReportGenerator(project, db)
-    generator.generate(filepath)
+    generator.generate(filepath, use_ai=req.use_ai)
 
     return {"filename": filename, "message": "报告生成成功"}
+
+
+@router.post("/projects/{project_id}/report/stream")
+def generate_report_stream(project_id: int, req: GenerateReportRequest = Body(default=GenerateReportRequest()), db: Session = Depends(get_db)):
+    """
+    使用 SSE 流式生成诊断评估报告。
+    前端通过 EventSource / ReadableStream 接收实时进度事件。
+
+    事件格式：
+      event: progress
+      data: {"step": "...", "pct": 50, "ai": true}
+
+      event: ready
+      data: {"filename": "报告_XXX.docx"}
+    """
+    import time
+    import threading
+    import json as _json
+
+    project = db.query(AssessmentProject).filter(AssessmentProject.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "项目不存在")
+
+    filename = f"报告_{project.company_name}.docx"
+    filepath = os.path.join(REPORT_DIR, filename)
+
+    queue: list[tuple[str, str] | None] = []
+    gen_error: list[str] = []
+    gen_done = threading.Event()
+
+    def callback(step: str, pct: int, ai: bool = False):
+        payload = _json.dumps({"step": step, "pct": pct, "ai": ai}, ensure_ascii=False)
+        queue.append(("progress", payload))
+
+    def run_generation():
+        try:
+            generator = ReportGenerator(project, db)
+            generator.generate_stream(filepath, use_ai=req.use_ai, callback=callback)
+            queue.append(("ready", _json.dumps({"filename": filename}, ensure_ascii=False)))
+        except Exception as e:
+            gen_error.append(str(e))
+        finally:
+            gen_done.set()
+
+    thread = threading.Thread(target=run_generation, daemon=True)
+    thread.start()
+
+    def event_generator():
+        while not gen_done.is_set():
+            while queue:
+                event_type, payload = queue.pop(0)
+                yield f"event: {event_type}\ndata: {payload}\n\n"
+            gen_done.wait(timeout=0.2)
+        # Drain remaining events after done
+        while queue:
+            event_type, payload = queue.pop(0)
+            yield f"event: {event_type}\ndata: {payload}\n\n"
+
+        if gen_error:
+            yield f"event: error\ndata: {_json.dumps({'message': gen_error[0]}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/projects/{project_id}/report/download")

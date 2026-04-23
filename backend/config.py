@@ -37,3 +37,9 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 # 确保此文件存在，否则数据库初始化时会报错
 # ========================================
 XLSX_PATH = os.environ.get("XLSX_PATH", os.path.join(BASE_DIR, "未来工厂标准诊断评估题库.xlsx"))
+
+# ========================================
+# AI 配置文件路径
+# 存储 AI API 配置的 JSON 文件
+# ========================================
+AI_CONFIG_PATH = os.path.join(BASE_DIR, "ai_config.json")

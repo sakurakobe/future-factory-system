@@ -35,7 +35,8 @@ import ScoreSummary from '../components/interview/ScoreSummary'
 import SidebarNav from '../components/interview/SidebarNav'
 import FilterBar from '../components/interview/FilterBar'
 import StickyScoreBar from '../components/interview/StickyScoreBar'
-import { generateReport, downloadReport, downloadExcel } from '../api/reports'
+import { generateReport, generateReportStream, downloadReport, downloadExcel } from '../api/reports'
+import { getLocalAIConfig } from '../api/ai'
 
 // Tab 定义
 const TABS = [
@@ -54,6 +55,9 @@ export default function ProjectDetailPage() {
   const [manageMode, setManageMode] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [visibleIds, setVisibleIds] = useState<Set<number> | null>(null)
+  const [useAi, setUseAi] = useState(false)
+  const [progress, setProgress] = useState<{ step: string; pct: number; ai: boolean } | null>(null)
+  const [progressHistory, setProgressHistory] = useState<{ step: string; ai: boolean }[]>([])
   const navigate = useNavigate()
 
   // 从全局 Store 获取状态和操作
@@ -85,9 +89,21 @@ export default function ProjectDetailPage() {
   /** 生成并下载报告 */
   const handleGenerateReport = async () => {
     setGenerating(true)
+    setProgress(null)
+    setProgressHistory([])
     try {
-      await generateReport(parseInt(id!))  // 先在后端生成
-      await downloadReport(parseInt(id!))  // 再触发下载
+      await generateReportStream(
+        parseInt(id!),
+        useAi,
+        (step, pct, ai) => {
+          setProgress({ step, pct, ai })
+          setProgressHistory(prev => [...prev, { step, ai }])
+        },
+      )
+      // Generate complete, trigger download
+      await downloadReport(parseInt(id!))
+      // Show completion for a moment
+      setProgress({ step: '报告生成完成！', pct: 100, ai: false })
     } catch (e) {
       alert('报告生成失败')
     }
@@ -232,35 +248,121 @@ export default function ProjectDetailPage() {
       )}
 
       {/* 4. 报告 */}
-      {tab === 'report' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex gap-4 mb-6">
-            <button
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              {generating ? '生成中...' : '生成并下载 Word 报告'}
-            </button>
-            <button
-              onClick={handleExportExcel}
-              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700"
-            >
-              导出 Excel 评估结果
-            </button>
-          </div>
-          <div className="border rounded-lg p-8 bg-gray-50">
-            <h3 className="text-center text-lg font-semibold text-gray-700 mb-4">
-              {project?.company_name}未来工厂建设诊断评估报告
-            </h3>
-            <div className="space-y-4 text-gray-600">
-              <p>点击"生成并下载报告"按钮生成DOCX格式诊断报告。</p>
-              <p>点击"导出Excel评估结果"按钮生成XLSX格式评估明细表。</p>
-              <p>报告将包含：概述、各项细项分析、改造投入建议等完整内容。</p>
+      {tab === 'report' && (() => {
+        const aiConfig = getLocalAIConfig()
+        const hasAiConfig = aiConfig && aiConfig.api_key && aiConfig.enabled
+        return (
+        <div className="max-w-3xl mx-auto">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-900">报告生成</h3>
+              <div className="flex gap-2">
+                {useAi && hasAiConfig && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-purple-100 text-purple-700 border border-purple-300">
+                    <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                    AI 增强已开启
+                  </span>
+                )}
+                {!useAi && hasAiConfig && (
+                  <button
+                    onClick={() => setUseAi(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 transition"
+                  >
+                    开启 AI 增强
+                  </button>
+                )}
+                {!hasAiConfig && (
+                  <button
+                    onClick={() => navigate('/settings')}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-gray-100 text-gray-500 border border-gray-200 hover:bg-gray-200 transition"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    配置 AI
+                  </button>
+                )}
+              </div>
             </div>
+            {useAi && hasAiConfig && (
+              <div className="mb-4 px-4 py-2 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-600">
+                AI 增强已开启：将使用大模型自动润色"企业现状与差距"和"对标未来工厂建议的提升点"。
+              </div>
+            )}
+
+            {/* ===== 报告生成进度面板 ===== */}
+            {generating && progressHistory.length > 0 && (
+              <div className="mb-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm font-medium text-gray-700">{progress?.step}</span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${progress?.pct || 0}%` }}
+                  />
+                </div>
+
+                {/* Thinking chain */}
+                <div className="bg-gray-50 rounded-lg p-4 max-h-80 overflow-y-auto space-y-2">
+                  {progressHistory.map((item, i) => (
+                    <div key={i} className="flex items-start gap-2.5 text-sm">
+                      {item.ai ? (
+                        <span className="mt-0.5 w-5 h-5 flex items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs flex-shrink-0">✦</span>
+                      ) : (
+                        <svg className="w-4 h-4 mt-0.5 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      <span className={item.ai ? 'text-purple-700 font-medium' : 'text-gray-600'}>
+                        {item.step}
+                        {i === progressHistory.length - 1 && !item.ai && (
+                          <span className="inline-flex gap-0.5 ml-1">
+                            <span className="animate-bounce">.</span>
+                            <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>.</span>
+                            <span className="animate-bounce" style={{ animationDelay: '0.2s' }}>.</span>
+                          </span>
+                        )}
+                      </span>
+                      {item.ai && (
+                        <span className="text-xs text-purple-400 ml-auto flex-shrink-0">AI 生成中...</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ===== 操作按钮 ===== */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleGenerateReport}
+                disabled={generating}
+                className="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+              >
+                {generating ? '生成中...' : '生成并下载 Word 报告'}
+              </button>
+              <button
+                onClick={handleExportExcel}
+                className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 transition"
+              >
+                导出 Excel 评估结果
+              </button>
+            </div>
+
+            {/* 完成提示 */}
+            {progress && progress.step === '报告生成完成！' && (
+              <div className="mt-4 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                报告已生成并触发下载！
+              </div>
+            )}
           </div>
         </div>
-      )}
+        )})()}
       </div>
     </div>
   )

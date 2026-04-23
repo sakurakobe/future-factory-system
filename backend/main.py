@@ -38,6 +38,7 @@ from routers.supplementary import router as supplementary_router
 from routers.investments import router as investments_router
 from router_report import router as report_router
 from routers.question import router as question_router
+from router_ai import router as ai_router
 
 # ========================================
 # 创建 FastAPI 应用实例
@@ -79,6 +80,7 @@ app.include_router(supplementary_router, prefix="/api", tags=["补充信息"])
 app.include_router(investments_router, prefix="/api", tags=["投资计划"])
 app.include_router(report_router, prefix="/api", tags=["报告生成"])
 app.include_router(question_router, prefix="/api", tags=["题目管理"])
+app.include_router(ai_router, prefix="/api", tags=["AI 配置"])
 
 
 # ========================================

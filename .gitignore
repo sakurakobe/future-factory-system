@@ -24,3 +24,4 @@ Thumbs.db
 uploads/
 *.db
 *.sqlite3
+backend/ai_config.json

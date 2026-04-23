@@ -28,6 +28,11 @@ function App() {
   const [authenticated, setAuthenticated] = useState(isLoggedIn())
   const location = useLocation()
 
+  // Re-check on every render in case localStorage changed externally
+  if (authenticated !== isLoggedIn()) {
+    setAuthenticated(isLoggedIn())
+  }
+
   const handleLogout = useCallback(() => {
     clearToken()
     setAuthenticated(false)
@@ -35,7 +40,7 @@ function App() {
 
   // If not authenticated and not on login page, show login
   if (!authenticated) {
-    return <LoginPage />
+    return <LoginPage onLoginSuccess={() => setAuthenticated(true)} />
   }
 
   return (

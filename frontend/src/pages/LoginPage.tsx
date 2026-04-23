@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { login } from '../api/auth'
 import { setToken } from '../api/client'
 
-export default function LoginPage() {
+export default function LoginPage({ onLoginSuccess }: { onLoginSuccess?: () => void } = {}) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [password, setPassword] = useState('')
@@ -18,7 +18,8 @@ export default function LoginPage() {
     try {
       const r = await login(password)
       setToken(r.data.token)
-      navigate('/')
+      onLoginSuccess?.()
+      navigate('/', { replace: true })
     } catch (e: any) {
       setError(e.response?.data?.detail || '登录失败')
     }

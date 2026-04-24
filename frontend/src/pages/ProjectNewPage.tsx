@@ -28,6 +28,8 @@ export default function ProjectNewPage() {
     assessment_end_date: '',
     assessors: '',
   })
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
   /** 表单提交处理 */
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,9 +38,21 @@ export default function ProjectNewPage() {
       alert('请输入企业名称')
       return
     }
-    const res = await createProject(form)
-    // 创建成功后跳转到项目详情页
-    navigate(`/project/${res.data.id}`)
+    setSubmitting(true)
+    setError('')
+    try {
+      const res = await createProject(form)
+      navigate(`/project/${res.data.id}`)
+    } catch (err: any) {
+      if (err.response?.status === 401) {
+        window.location.href = '/login?reason=expired'
+        return
+      }
+      const msg = err.response?.data?.detail || err.message || '创建失败，请稍后重试'
+      setError(msg)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -106,10 +120,21 @@ export default function ProjectNewPage() {
           />
         </div>
 
+        {/* 错误提示 */}
+        {error && (
+          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
         {/* 底部按钮 */}
         <div className="flex gap-3 pt-4">
-          <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
-            创建项目
+          <button
+            type="submit"
+            disabled={submitting}
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? '创建中...' : '创建项目'}
           </button>
           <button
             type="button"
